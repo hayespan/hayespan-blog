@@ -11,4 +11,21 @@ layout: default
     {{ content }}
   </div>
 
+  <div class="post-comment">
+      {% if site.duoshuo_enable && site.duoshuo_username %}
+      <!-- 多说评论框 start -->
+      <div class="ds-thread"
+          data-thread-key="{{page.url}}" 
+          data-title="{{page.title}}"
+          data-url="{{site.url}}{{site.baseurl}}{{page.url}}">
+      </div>
+      <!-- 多说评论框 end -->
+      {% endif %}
+  </div>
+
 </article>
+
+{% if site.duoshuo_enable %}
+{% include duoshuo_js.html %}
+{% endif %}
+

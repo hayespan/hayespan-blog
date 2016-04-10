@@ -11,10 +11,14 @@ email: 806968607@qq.com
 description: > # this means to ignore newlines until "baseurl:"
     一个爱画画的程序猿。
 baseurl: "/hayespan-blog" # the subpath of your site, e.g. /blog
-url: "https://hayespan.github.com" # the base hostname & protocol for your site
+url: "https://hayespan.github.io" # the base hostname & protocol for your site
 port: 8091
 github_username: hayespan
 
 # Build settings
 markdown: kramdown
 excerpt_separator: ""
+
+# duoshuo 评论
+duoshuo_enable: true
+duoshuo_username: "hayespangithubio"
