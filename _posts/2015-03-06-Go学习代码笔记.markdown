@@ -1,0 +1,236 @@
+---
+layout: post
+title:  "Go学习代码笔记"
+date:   2015-03-06 20:24:19 +0800
+categories: 编程
+---
+
+{% highlight go %}
+
+package main
+
+import (
+	"fmt"
+)
+
+// struct 可在func内
+func f1() {
+
+	var a float32  // declare definition
+	fmt.Println(a) // a is initialized to 0
+
+	b := map[int]int{} // 等价 b := make(map[int]int)
+	b[3] = 4           // 加入键值对
+	v, ok := b[1]      // 可读取不存在的键值，ok为false
+	fmt.Println(v, ok)
+	fmt.Println(b[1], b[2], b[3], b[4]) // 第二个返回值被忽略
+
+	type MyStruct struct {
+		id       int
+		name     string
+		location string
+	}
+
+	// 值类型的赋值是复制赋值，结构体是值类型，基本类型与指针、结构体、数组都是值类型
+	var pinfo = MyStruct{
+		1,
+		"hayes pan",
+		"shantou",
+	}
+	fmt.Println(pinfo.id, pinfo.name, pinfo.location)
+	var pinfo2 = MyStruct{
+		2,
+		"panhzh3",
+		"guangzhou",
+	}
+        // 因为是值传递，所以要用指针
+	pinfo4 := &MyStruct{3, "phz", "chenghai"} // 对取地址符的，会做escape analysis
+	fmt.Println(pinfo, pinfo4) // pinfo4表示方法挺有趣的，不是干巴巴的十六进制
+	t := int(4) // int() 是多余的其实，默认推导就是int类型
+	fmt.Println(&t) // 普通类型的打印就直接是指针，感觉不公平哩
+
+	pinfo3 := pinfo2
+	pinfo2.id = 3
+	fmt.Println(pinfo3.id) // 没有修改成功，因为是拷贝
+
+	// chan, slice, map, interface 是引用类型（重要）
+	// 但本质上还是值类型，只是因为里边有指针，所以表现起来像引用类型
+
+	// slice
+	sl1 := []int{1, 2}
+	sl2 := sl1
+	sl2[0] = -1
+	fmt.Println(sl1[0], sl2[0]) // 两个都被修改了
+}
+
+// 不定参数
+func f2(args ...int) {
+	for i, v := range args { // 用 range关键字解开，注意unicode字符串同样用range，rune！
+		fmt.Println(i, " ", v)
+	}
+}
+
+// ...type只是一个语法糖，不加的话，调用函数会麻烦点，就是用切片
+func f2_1(args []int) {
+	for i, v := range args {
+		fmt.Println(i, " ", v)
+	}
+}
+
+// case cannot be duplicate
+// fallthrough cannot be in type switch
+func f2_2(args ...interface{}) {
+	for _, v := range args {
+		switch v.(type) { // 这里有点不解，加括号是语法原因？
+		case int:
+			fmt.Println(v, "is a int.")
+		case float32:
+			fmt.Println(v, "is a float32.")
+		case float64:
+			fmt.Println(v, "is a float64.")
+		case []int:
+			fmt.Println(v, "is a []int.")
+			// fallthrough // 使得跳过判断进入下一个case
+		// case int32:
+		// fmt.Println("after fallthrough.")
+		default:
+			fmt.Println("default.")
+		}
+	}
+	// switch 有一个用法，有利于多条件分支
+        a := 0
+	switch { // 这里省略语句与变量，所以默认是true
+	case a<0:
+		// blabla...
+	case a==0:
+		// blabla...
+	case a>0:
+		// blabla...
+	}
+}
+
+// 切片与数组
+func f3() { // 切片1，超出容量时，扩展策略与c++一的vector样，*2
+	a1 := []int{1, 2, 3}
+	fmt.Println("len a1: ", len(a1))
+	fmt.Println("cap a1: ", cap(a1))
+	a1 = append(a1, 4, 5)
+	fmt.Println("len a1: ", len(a1))
+	fmt.Println("cap a1: ", cap(a1))
+
+	// 切片2
+	a2 := make([]int, 3, 10) // 用make优势就是可以设定长度与容量
+	fmt.Println("len a2: ", len(a2))
+	fmt.Println("cap a2: ", cap(a2))
+
+	// 数组不能append，记住了！
+	b := [5]int{1, 2, 3, 4, 5}
+	fmt.Println("len b: ", len(b))
+	fmt.Println("cap b: ", cap(b))
+	// b = append(b, 6, 7, 8)
+	// fmt.Println("len b: ", len(b))
+	// fmt.Println("cap b: ", cap(b))
+
+	// 切片3
+	a3 := b[1:5]
+	fmt.Println("len a3: ", len(a3))
+	fmt.Println("cap a3: ", cap(a3))
+
+	a4 := a3[:len(a3)-1]
+	fmt.Println("len a4: ", len(a4))
+	fmt.Println("cap a4: ", cap(a4))
+	// 注意golang中的切片与python还是有较大区别的，虽然语法上类似，但是
+	// golang中 b := a[:]是浅拷贝的，底层指向同一个数组，所以如果要获得副本可以
+	// 用： b := append([]int{}, a...)， 或者先make一个，再copy
+}
+
+// 对error进行包装
+type MyError struct {
+	op   string
+	path string
+	err  error
+}
+
+// 为MyError实现Error的接口
+func (e *MyError) Error() string {
+	return e.op + " " + e.path + ": " + e.err.Error()
+}
+
+// func f4(filename string) (fi FileInfo, err error) {
+// var stat syscall.Stat_t
+// err = syscall.Stat(filename, &stat)
+// if err != nil {
+// return nil, &MyError{"stat", filename, err}
+// }
+// return fileInfoFromStat(&stat, filename), nil
+// }
+
+// 匿名函数，支持闭包
+func f5() {
+	f := func() {
+		fmt.Println("no-name func")
+	}
+	f()
+
+	func() {
+		fmt.Println("running!")
+	}()
+}
+
+// 定义赋值的一个情况
+func f6() {
+	s := "abc"
+	fmt.Println(s, &s)
+	s, y := "hello", 20 // s被认为是赋值
+	// s := "hello" 这样的话是重定义
+	fmt.Println(s, &s, y)
+	{ // 块作用域
+		s := "hayespan" // 新变量
+		fmt.Println(s, &s)
+	}
+}
+
+func f7() {
+	var c chan int
+	go f7_1(&c)
+	go f7_2(&c)
+}
+func f7_1(c *chan int) { // 可以用指针，也可以不用，因为是引用类型
+	fmt.Println("f7_1 begin")
+	*c <- 10
+	fmt.Println("f7_1 end")
+}
+func f7_2(c *chan int) {
+	fmt.Println("f7_2 begin")
+	<-*c
+	fmt.Println("f7_2 end")
+}
+
+func Count(ch chan int) {
+	fmt.Println("Counting")
+	ch <- 1
+}
+
+func main() {
+	// f1()
+	// f2(1, 2, 3)
+	// f2_1([]int{1, 2, 3})
+	// f2_2(1, 1.2, []int{1, 2, 3})
+	// f3()
+	// fmt.Println(f4(1, 1))
+	// f4("hello.go")
+	// f5()
+	// f6()
+	f7()
+	chs := make([]chan int, 10)
+	for i := 0; i < 10; i++ {
+		chs[i] = make(chan int)
+		go Count(chs[i])
+	}
+	for _, ch := range chs {
+		fmt.Println(<-ch)
+	}
+
+}
+
+{% endhighlight %}
