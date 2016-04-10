@@ -1,0 +1,108 @@
+---
+layout: post
+title:  "实际用户，有效用户，设置用户"
+date:   2015-03-17 20:24:19 +0800
+categories: 编程
+---
+
+大三上学期接触过`linux`中的实际用户、有效用户、设置用户等概念，当时写过c程序，觉得应该已经理解并牢记下来了。结果呢……太自信了～果然我的记忆曲线实在太陡了，技术繁杂，以后还是要勤做笔记。
+
+今天重学了一下apue中的进程控制一章，这次把以上的概念记录下来，并写写个人的思考。
+
+用户权限这一块总是比较难理解，特别是对于为何要这样设计。
+
++ 为什么要有 __有效用户id__，而不是简单地提供一个 __实际用户id__？
++ 为什么要提供 __设置用户id__，这个又是什么作用呢？
+
+首先，我们先看看三者的定义：
+
+__实际用户id__：进程的执行者。在用户`login`的时候就已经确定了，实际用户id只有超级权限可以修改，因为`login`具有超级用户权限，所以调用`setuid`设置所有三个用户id。
+
+__有效用户id__：执行进程时的有效权限，用于文件权限检测。
+
+__设置用户id__：与 __设置用户id位__ 相关，起到记录程序owner的作用。
+
+----
+
++ 为什么要有 __有效用户id__ ，而不是简单地提供一个 __实际用户id__ ？
+
+正常而言，普通用户登陆后，应该有一个固定的属性标志当前身份，也就是实际用户id；而在运行程序时，应当提供一个当前用户与程序之间的属性，具体标志用户执行程序的权限。这两者就如数据库设计中的实体关联原理，用户是一个实体，程序也是一个实体，则有效用户id便是关联集上的一个属性。
+
+----
++ 为什么要提供 __设置用户id__ ，这个又是什么作用呢？
+
+    1.如果有开启程序的设置用户id位，则`exec`时，默认会将有效用户id设置为程序的owner，实际用户id不变；
+
+    2.如果在程序中想进一步设置回当前用户id，可调用`setuid`，结合`getuid`，将有效用户id设置为实际用户id；
+
+    3.OK，如果设置完2，突然又想将有效用户id恢复为原本的程序的owner，怎么办？假如可以`setuid(x)`（x表示owner id），那么操作系统凭什么相信这个x是owner id，而不是我们随便写的呢？恩，就是借助 _设置用户id_ 来辨识。
+
+----
+借助一个简单的程序来体会一下：
+
+1.新建：res-uid.c，代码如下：
+{% highlight c %}
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+int main(int argc, const char *argv[])
+{
+    int ori_euid = geteuid(); // 先保存程序owner的id（因为开启了`设置用户id位`
+                              // 所以此时 有效用户id==程序owner id）
+    printf( // 注意 geteuid() 返回的就是 ori_euid
+            "before setting:\n"
+            "real user-id: %d\n"
+            "effective user-id: %d\n",
+            getuid(),
+            geteuid()
+          );
+    setuid(getuid()); // 将有效用户id设置为实际用户id，恢复为实际用户的权限
+    printf(
+            "after setting:\n"
+            "real user-id: %d\n"
+            "effective user-id: %d\n",
+            getuid(),
+            geteuid()
+          );
+    setuid(ori_euid); // 将有效用户id恢复为原本的程序owner id
+    printf(
+            "after recovering:\n"
+            "real user-id: %d\n"
+            "effective user-id: %d\n",
+            getuid(),
+            geteuid()
+          );
+    return 0;
+}
+{% endhighlight %}
+
+2.当前用户编译、置位、运行 `gcc res-uid.c -o res; chmod +s res;./res`，得到：
+![img](http://7vzry1.com1.z0.glb.clouddn.com/post/img/res-user-id-1.png)
+
+可见，因为是以owner身份执行，所以输出都是1000（owner uid）。
+
+3 切换到另一个账号test，`./res`得到：
+![img](http://7vzry1.com1.z0.glb.clouddn.com/post/img/res-user-id-2.png)
+
+1. 实际用户id一直没变，而有效用户id因为`chmod +s`，所以一开始默认是程序owner id，也就是1000；
+   
+2. 之后，调用`setuid`，设置为实际用户id，1001；
+   
+3. 最后，又恢复为1000，此时 __设置用户id__ 起到验证的作用。假如，改为1002，那么就验证失败。
+
+4.切换到root账号，`./res`得到：
+![img](http://7vzry1.com1.z0.glb.clouddn.com/post/img/res-user-id-3.png)
+
+1. 实际用户id是0，而有效用户id因为`chmod +s`，所以一开始默认是程序owner id，也就是1000；
+
+2. 调用了`setuid`，因为是超级用户，所以会把三个用户id都置为0（设置用户id也是0）；
+
+3. 同理，调用`setuid`，因为是超级用户，所以会把三个用户id都置为owner id，也就是1000；
+
+----
+最后，总结一下，如果写了个程序，需要其他用户能临时借用我的权限，那么就使用`chmod +s`；但是全程都给予这样的权限可能造成麻烦，例如这个程序的owner是root，恩那就比较危险了！所以应当在需要的时候才赋予权限，所以要使用`setuid(getuid())`；之后，想收回权限，肿么办？同样要用`setuid(x)`，好吧那x是多少呢，恩得在一开始就用 `geteuid()` 保存下来咯！
+
+----
+> 1. [Linux进程的实际用户ID、有效用户ID和保存的设置用户ID](http://sse.hit.edu.cn/yz/index.php/three-user-ids-of-a-process-in-linux/)
+> 2. [RealUID, Saved UID, Effective UID. What's going on?](http://stackoverflow.com/questions/8499296/realuid-saved-uid-effective-uid-whats-going-on)
+
