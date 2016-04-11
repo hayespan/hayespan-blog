@@ -20,7 +20,7 @@ _第一，如何实现进程间的锁呢？_
 
 我们知道线程的话可以使用`pthread_mutex`，进程可以用`semaphore`等。其实，`pthread_mutex`也是支持进程间可见的，通过`mmap`拿到一块共享内存，然后给`pthread_mutex`加上`PTHREAD_PROCESS_SHARED`的属性就可以了。
 
-{% highlight c %}
+{% highlight c linenos %}
 pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
 {% endhighlight %}
 
@@ -30,7 +30,7 @@ _二，如果持有锁的进程被干掉了呢？_
 
 解决方案就是给锁设置`robust`属性，之后，进程B`trylock`操作返回`EOWNERDEAD`，则说明持有该锁的进程A挂了，然后B可以调用`pthread_mutex_consistent_np`进行清理后，再释放锁。下一次B就可以正常获取锁了。
 
-{% highlight c %}
+{% highlight c linenos %}
 pthread_mutexattr_setrobust_np(&attr,PTHREAD_MUTEX_ROBUST_NP);
 
 A lock
@@ -52,7 +52,7 @@ pthread_mutex_lock(plock); // lock sussessful~
 
 下面是解决惊群的完整代码：
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <iostream>
 #include <sys/epoll.h>
 #include <sys/socket.h>

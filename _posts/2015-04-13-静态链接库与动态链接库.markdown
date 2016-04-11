@@ -17,7 +17,7 @@ categories: 编程
 
 1.编写`f`，`g`两个函数，头文件与实现如下：
 
-{% highlight c %}
+{% highlight c linenos %}
 /* f.h */
 #ifdef F_H
 #deine F_H
@@ -53,7 +53,7 @@ void g() {
 
 4.编写`main`函数
 
-{% highlight c %}
+{% highlight c linenos %}
 /* main.c */
 #include <stdio.h>
 #include "f.h" // 此处包含头文件，但是经过测试不包含其实也没报错，但还是得包含
@@ -75,7 +75,7 @@ int main(int argc, const char *argv[])
 
 6.运行`./a.out`得到
 
-{% highlight c %}
+{% highlight c linenos %}
 /* ouput */
 f
 g

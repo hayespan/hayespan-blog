@@ -11,7 +11,7 @@ categories: 编程
 
 （其实我觉得实际上应该称之为`同步非阻塞`，因为感觉内部实现应该是遍历描述符集合，采用非阻塞的方式，不可读写便跳过。虽然在程序宏观逻辑上，是异步的效果，具体可参考[1][2]）
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <sys/select.h>
 #include <stdio.h>
 #include <unistd.h>

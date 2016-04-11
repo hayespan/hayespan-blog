@@ -8,7 +8,7 @@ categories: 编程
 公司的项目比较老，没用上`c++11`，而且编译器版本也低，记得好像是`4.1.2`的，所以平时写代码时经常会纠结怎么写才能避免拷贝，虽然实际上并不会有太大的影响，但作为程序员还是有点代码洁癖。
 例如对于以下的代码，在关闭优化选项时，会调用2次拷贝构造函数。
 
-{% highlight c++ %}
+{% highlight c++ linenos %}
 test.cpp:
 
 class A;
@@ -26,7 +26,7 @@ int main() {
 
 其中`A`的定义如下：
 
-{% highlight c++ %}
+{% highlight c++ linenos %}
 class A {
 public:
     A() {
@@ -65,7 +65,7 @@ dtor
 
 例如偷走堆缓冲区的例子：
 
-{% highlight c++ %}
+{% highlight c++ linenos %}
 class CBuf {
 public:
     CBuf() {
@@ -89,7 +89,7 @@ private:
 
 还是使用第一个例子，在`A`中定义移动构造函数。
 
-{% highlight c++ %}
+{% highlight c++ linenos %}
 A::A(A && ) {
     cout << "rvalue ctor" << endl;
 }
@@ -111,7 +111,7 @@ dtor
 ok，那么上述的例子是在右值的情况下，自动调用移动构造函数的，那么如果是左值，能否移动呢？
 答案是肯定的，使用`std::move`。
 
-{% highlight c++ %}
+{% highlight c++ linenos %}
 A a; // a 是左值
 A b(move(a)); // a 被强制转换为右值引用，然后就被b“偷”了
 // 因为a中的资源已经被偷走，所以a应不再使用，虽然a还“活”

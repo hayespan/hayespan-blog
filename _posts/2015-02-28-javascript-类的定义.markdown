@@ -12,11 +12,11 @@ categories: 编程
 如果平时想快速得到一个对象的话，就直接定义即可。
 
 1.直接用花括号定义：
-{% highlight javascript %}
+{% highlight javascript linenos %}
 var o = {name: "...", age: 22, learn: function() { alert("get"); } }
 {% endhighlight %}
 2.使用`new`关键字，调用构造函数：
-{% highlight javascript %}
+{% highlight javascript linenos %}
 var o = new Object; // or: var o = new Object();
 o.name = '...';
 o.age = 22;
@@ -47,7 +47,7 @@ o.learn = function() { alert("get"); }
 
 容易想到的是工厂模式，比较简单直接po代码：
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 var createObject = function() {
     var o = {}; // 每次调用工厂函数都会生成一个新的内部对象
     o.name = '...'; // 并做相应赋值
@@ -70,7 +70,7 @@ __缺点__：
 
 其实缺点中的函数重复定义也可以避免：
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function _learn() {
     alert("get");
 }
@@ -99,7 +99,7 @@ __缺点__：
 
 而且还跟`new`结合，有`new`就起构造函数作用，能产生对象，没`new`就是普通函数职能。当然，我想这仅仅是理解层面上的区分，如果偏偏直接以普通函数来调用构造函数呢？其实也可以。举个例子：
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function Constructor() { // 本意是构造函数
     this.x = 1; // this指的是调用该构造函数的对象
 }
@@ -118,7 +118,7 @@ alert(x); // 这时window对象就多了一个x属性了，所以调用构造函
 
 构造函数法的代码如下：
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function People() {
     this.name = '...';
     this.age = 22;
@@ -143,7 +143,7 @@ var o = new People;
 
 #### 3.__原型__
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function People() { // 先定义一个空的构造函数
 }
 // 为构造函数设置原型
@@ -166,7 +166,7 @@ var o = new People;
 
 用刚才的例子，改为：
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function People() { // 先定义一个空的构造函数
 }
 // 为构造函数设置原型
@@ -193,7 +193,7 @@ b.hobby.push("eat"); // ["study", "football", "eat", ]
 
 举个例子：
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function People() {
     this.hobby = ["study", ]; // 不可共享引用的属性放进了构造函数中
 }
@@ -225,7 +225,7 @@ t2.hobby.push("stop war"); // 现在，t2.hobby = ["study", "save people", "stop
 #### 4.__混合构造函数与原型__
 
 由于在上边的第三种已经提到，这里只放简单代码：
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function People(name, age) { // 1. 能带参数，发挥构造函数优势
     this.name = name;
     this.age = age;
@@ -250,7 +250,7 @@ __缺点__：
 
 木错！这个方法纯粹是为了解除强迫症患者的苦痛！
 
-{% highlight javascript %}
+{% highlight javascript linenos %}
 function People(name, age) { // 1. 能带参数，发挥构造函数优势
     this.name = name;
     this.age = age;

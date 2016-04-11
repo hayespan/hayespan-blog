@@ -9,7 +9,7 @@ categories: 编程
 
 服务端代码：
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <stdio.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -61,7 +61,7 @@ int main(int argc, const char *argv[]) {
 
 客户端代码：
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <stdio.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>

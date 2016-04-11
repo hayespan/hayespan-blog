@@ -7,7 +7,7 @@ categories: 编程
 
 demo:
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <iostream>
 #include <cstring>
 #include <cstdio>

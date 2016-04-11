@@ -9,7 +9,7 @@ categories: 编程
 
 写了几个简单的例子，描述直接注释在代码中。
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <stdio.h>
 #include <unistd.h>
 #include <pthread.h>

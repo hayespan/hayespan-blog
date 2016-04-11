@@ -7,7 +7,7 @@ categories: 编程
 
 demo:
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <vector>
 #include <wait.h>
 #include <string.h>

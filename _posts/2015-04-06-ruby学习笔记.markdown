@@ -8,7 +8,7 @@ categories: 编程
 发现了一个不错的网站：[Learn X in Y minutes](http://learnxinyminutes.com/)
 这是网站上的ruby简明教程，接下来继续补充～
 
-{% highlight ruby %}
+{% highlight ruby linenos %}
 # 这是单行注释
 
 =begin

@@ -21,7 +21,7 @@ __孤儿进程__：一个进程使用`fork`创建子进程，然后父进程退�
 
 具体代码如下：（APUE的例子）
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -80,7 +80,7 @@ int main(int argc, const char *argv[])
 
 代码如下：
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

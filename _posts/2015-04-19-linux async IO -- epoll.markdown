@@ -7,7 +7,7 @@ categories: 编程
 
 今天体验了一下`Linux`的专有异步系统调用`epoll`（合理来说，还是同步的，只是利用了`event`结构比较高效地通知活跃`fd`从而避免线性扫描），总体还是比较容易用的，主要是3步操作：
 
-{% highlight c %}
+{% highlight c linenos %}
 // 创建能监听size个fd的epoll内核结构，返回的是epfd
 int epoll_create(int size);
 
@@ -46,7 +46,7 @@ int epoll_wait(int epfd, struct epoll_event *events,
 
 下边的代码使用的是`O_NONBLOCK`，解决了read阻塞的问题，但根本上还是存在上述问题。
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <sys/epoll.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -138,7 +138,7 @@ int main(int argc, const char *argv[]) {
 
 以下是将水平触发的代码进行简单的修改。
 
-{% highlight c %}
+{% highlight c linenos %}
 #include <sys/epoll.h>
 #include <stdio.h>
 #include <unistd.h>

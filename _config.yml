@@ -22,3 +22,6 @@ excerpt_separator: ""
 # duoshuo 评论
 duoshuo_enable: true
 duoshuo_username: "hayespangithubio"
+
+# highlighter
+highlighter: "pygments"

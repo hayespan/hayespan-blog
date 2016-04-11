@@ -41,7 +41,7 @@ __设置用户id__：与 __设置用户id位__ 相关，起到记录程序owner�
 借助一个简单的程序来体会一下：
 
 1.新建：res-uid.c，代码如下：
-{% highlight c %}
+{% highlight c linenos %}
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
