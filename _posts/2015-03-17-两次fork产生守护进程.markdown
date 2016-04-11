@@ -1,0 +1,131 @@
+---
+layout: post
+title:  "两次fork产生守护进程"
+date:   2015-03-17 20:24:19 +0800
+categories: 编程
+---
+
+最近开始学习unix编程，接下来会记录一些代码片段的笔记。
+
+记得刚接触`linux`的时候，对僵尸进程很感兴趣，觉得这个概念很特别（当然可能是以前丧尸片看多了= =），在`linux`下，可以用`ps aux | grep defunct`查看僵尸进程。
+
+__僵尸进程__：一个进程使用`fork`创建子进程，如果子进程退出，内核仍会保存子进程的部分信息（包括进程号、退出状态、运行时间等），而父进程并没有调用`wait`或`waitpid`获取子进程的状态信息，导致子进程变成僵尸进程。
+
+__孤儿进程__：一个进程使用`fork`创建子进程，然后父进程退出，而子进程仍在运行中，此时内核会扫描一遍进程描述符，判断哪些是已退出进程的子进程，将其`ppid`改为1（即`init`进程），由`init`进程接管，称为孤儿进程。（注意：等到子进程退出后，`init`进程会调用`wait`取回子进程返回状态，保证了子进程不会变成僵尸进程。）
+
+可见，僵尸进程将占用进程号，而`linux`进程号是有限资源，所以如果产生大量僵尸进程，那么可能导致无法创建新进程。
+
+所以问题来了，如果想要`fork`子进程来执行其他操作，那么为了子进程不会变成僵尸进程，父进程就要等待所有进程退出，调用`wait`或者`waitpid`来取回子进程终止状态，释放占有资源，如果子进程没有终止，则父进程将处于阻塞状态（`wait`会导致阻塞，`waitpid`的`options`可选为非阻塞`WNOHANG`，但也必然需要轮询），导致父进程一直没法继续工作。
+
+那么如何才能解决这个问题呢？恩，就是利用孤儿进程了！进行两次`fork`，父进程A第一次`fork`产生子进程B，子进程B再`fork`产生子进程C，B调用`exit(0)`终止，A调用`wait`获取B的退出状态。这样就保证了B进程不会变成僵尸进程，C进程变成孤儿进程从而被`init`进程接管。并且，父进程A在取回B进程的终止状态信息后，就可以继续执行其他操作。
+
+具体代码如下：（APUE的例子）
+
+{% highlight c %}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <time.h>
+
+int main(int argc, const char *argv[])
+{
+    pid_t pid;
+    if((pid=fork())<0) {
+        printf("First fork failed!\n");
+        exit(-1);
+    }
+    else if(pid==0) {
+        /* B process */
+        if((pid=fork())<0) {
+            printf("Second fork failed!\n");
+            exit(-1);
+        }
+        else if(pid==0) {
+            sleep(1);
+            /* 第二个子进程C继续干活*/
+            printf("Process C end.\n");
+            exit(0);
+        }
+        /* 第一个子进程B使命完成，终止掉 */  
+        printf("Process B end.\n");
+        exit(0);
+    }
+    if(waitpid(pid, NULL, 0)!=pid)
+        printf("waitpid error!\n");
+    /* 父进程A继续干活*/
+    printf("Process A end.\n");
+    return 0;
+}
+{% endhighlight %}
+
+----
+
+那么，平时经常听说的 __守护进程__ 又是什么呢？
+
+守护进程：与用户无交互的、父进程为`init`进程的后台进程。例如`sshd`、`mysqld`等。一般是为了提供网络服务等而被创建，随着系统启动或，直到被人为`kill`或者系统关闭才退出。
+
+守护进程其实就是孤儿进程，但因为孤儿进程仍然属于父进程所在的进程组与会话组，而进程组与会话组又是与终端关联，那么，在退出终端时，进程也就退出了。所以除了是孤儿进程外，守护进程还需与终端脱离，称为“脱壳”。
+
+需要以下操作：
+
+0. 父进程A调用`fork`产生子进程B，父进程A退出，使得子进程B成为孤儿进程；
+1. 子进程B调用`setsid`创建新的会话，并使得子进程成为新会话的领头进程。并且，子进程是新创建会话中的惟一进程组的唯一进程；
+2. 因为子进程B是领头进程，具有打开终端的能力，因此需要再调用`fork`产生子进程C，由于C不是领头进程，所以就不能申请打开新终端；
+3. 因为子进程C继承了父进程的工作目录，应调用`chdir`将工作目录改为`/`，否则，在子进程退出之前，工作目录不能卸载；
+4. 因为子进程C继承了父进程打开的文件描述符，应调用`close`关闭不需要的文件描述符；并重定位标准输入、标准输出、标准错误；
+5. 调用`umask(0)`，重设文件掩模。
+ 
+总的来说，思想就是：第一次`fork`，认`init`为爹，`setsid`摆脱控制；第二次`fork`，舍弃老大，限制开新终端的能力。然后，就继续清理工作，彻底脱离干系了。
+
+代码如下：
+
+{% highlight c %}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <time.h>
+
+int main(int argc, const char *argv[])
+{
+    pid_t pid;
+    if((pid=fork())<0) {
+        printf("First fork failed.\n");
+        exit(-1);
+    }
+    else if(pid==0) {
+        setsid(); // 新建会话
+        if((pid=fork())<0) { // 再次fork！
+            printf("Second fork failed.\n");
+            exit(-1);
+        }
+        else if(pid==0) {
+            chdir("/"); // 改工作目录
+            int i;
+            for(i=0;i<getdtablesize();i++) { // getdtablesize 获取打开的文件描述符数量
+                close(i);
+            }
+            umask(0);
+            sleep(60);
+        }
+        exit(0);
+    }
+    if(waitpid(pid, NULL, 0)!=pid) {
+        printf("waitpid failed.\n");
+        exit(-1);
+    }
+    exit(0);
+}
+{% endhighlight %}
+
+ok，运行一下，截图可以看到：
+
+![img](http://7vzry1.com1.z0.glb.clouddn.com/post/img/twice-fork-and-daemon-process-1.png)
+
+`hayespand`已经作为`daemon`运行了。
+
+----
+
+> 1. [linux下daemon守护进程的编写实例](http://www.nenew.net/linux-c-program-daemon-example.html)
+> 2. [linux系统编程之进程（八）：守护进程详解及创建，daemon()使用](http://www.cnblogs.com/mickole/p/3188321.html)
+> 3. apue 2nd

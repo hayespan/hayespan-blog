@@ -1,0 +1,129 @@
+---
+layout: post
+title:  "右值引用与移动语义"
+date:   2016-04-10 20:24:19 +0800
+categories: 编程
+---
+
+公司的项目比较老，没用上`c++11`，而且编译器版本也低，记得好像是`4.1.2`的，所以平时写代码时经常会纠结怎么写才能避免拷贝，虽然实际上并不会有太大的影响，但作为程序员还是有点代码洁癖。
+例如对于以下的代码，在关闭优化选项时，会调用2次拷贝构造函数。
+
+{% highlight c++ %}
+test.cpp:
+
+class A;
+
+A f() {
+    A a;
+    return a;
+}
+
+int main() {
+    A b = f();
+    return 0;
+}
+{% endhighlight %}
+
+其中`A`的定义如下：
+
+{% highlight c++ %}
+class A {
+public:
+    A() {
+        cout << "default ctor" << endl;
+    }
+    virtual ~A() {
+        cout << "dtor" << endl;
+    }
+    A(const A & ) {
+        cout << "copy ctor" << endl;
+    }
+    A & operator=(const A & ) {
+        cout << "assign operator" << endl;
+    }
+};
+{% endhighlight %}
+
+执行`g++ test.cpp -std=c++11 -fno-elide-constructors -o test;./test`
+
+输出：
+
+```
+default ctor
+copy ctor
+dtor
+copy ctor
+dtor
+dtor
+```
+
+可见，发生了两次拷贝，第一次是`f`中的`a`拷贝到临时返回变量，第二次是临时返回变量拷贝到`b`。
+
+----
+
+`c++11`的右值引用可以解决上述问题，为`A`定义移动构造函数，在移动构造函数中直接“偷走”右值的内容，避免资源的重新申请和释放。
+
+例如偷走堆缓冲区的例子：
+
+{% highlight c++ %}
+class CBuf {
+public:
+    CBuf() {
+        _pBuf = new char[1024];
+    }
+    virtual ~CBuf() {
+        delete [] _pBuf;
+    }
+
+    CBuf(CBuf && o) { // 移动构造函数，参数是右值引用，不能用const修饰，因为要修改右值内容
+        _pBuf = o._pBuf; // 偷走
+        o._pBuf = nullptr; // 将指针置空，防止右值引用的对象在析构时将指针delete
+    }
+
+private:
+    char * _pBuf;
+};
+{% endhighlight %}
+
+通过定义移动构造函数，那么在右值传递情况下，就会调用移动构造函数。
+
+还是使用第一个例子，在`A`中定义移动构造函数。
+
+{% highlight c++ %}
+A::A(A && ) {
+    cout << "rvalue ctor" << endl;
+}
+{% endhighlight %}
+
+这次输出的结果为：
+
+```
+default ctor
+rvalue ctor // 移动
+dtor
+rvalue ctor // 移动
+dtor
+dtor
+```
+
+----
+
+ok，那么上述的例子是在右值的情况下，自动调用移动构造函数的，那么如果是左值，能否移动呢？
+答案是肯定的，使用`std::move`。
+
+{% highlight c++ %}
+A a; // a 是左值
+A b(move(a)); // a 被强制转换为右值引用，然后就被b“偷”了
+// 因为a中的资源已经被偷走，所以a应不再使用，虽然a还“活”
+...
+{% endhighlight %}
+
+输出：
+
+```
+default ctor
+rvalue ctor
+dtor
+dtor
+```
+

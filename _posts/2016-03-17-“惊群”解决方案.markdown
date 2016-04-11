@@ -1,0 +1,195 @@
+---
+layout: post
+title:  "“惊群”解决方案"
+date:   2016-03-17 20:24:19 +0800
+categories: 编程
+---
+
+毕设做的是`haysvr`([rpc框架+demo](https://github.com/panhzh3/graduation_project))，遇到`“惊群”(thundering herd)`的问题，记录如下。
+
+如果只是`阻塞io`，对`监听socket`直接`accept`，那么`Linux 2.6`之后是不会有惊群问题的，只有一个进程或线程会被唤醒并`accept`成功。但是，由于使用了`epoll`，在多进程或者多线程环境中，同时对`监听socket`进行`epoll_wait`，则会导致当有一个请求到达时，所有进程或线程都被唤醒，而最终只有一个进程或线程可以成功地`accept`，其他的都返回`-1`.
+
+__解决方案__：
+所有进程在循环中，先抢锁，成功抢到锁的进程，把`监听socket`加入`(epoll_ctl_add)`到自己的`epoll fd`中，没抢到锁的进程，则把`监听socket`从自己的`epoll fd`中删除(`epoll_ctl_del`)。这样就确保了每次只有一个进程能够获得`监听socket`，不会引起惊群，避免了全部进程被唤醒。`nginx`也是类似这样处理，等毕设完成了再深入去看，现在时间好紧T_T。
+
+但是上述的方法有个问题，就是`锁`的问题。
+
+----
+
+_第一，如何实现进程间的锁呢？_
+
+我们知道线程的话可以使用`pthread_mutex`，进程可以用`semaphore`等。其实，`pthread_mutex`也是支持进程间可见的，通过`mmap`拿到一块共享内存，然后给`pthread_mutex`加上`PTHREAD_PROCESS_SHARED`的属性就可以了。
+
+{% highlight c %}
+pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+{% endhighlight %}
+
+_二，如果持有锁的进程被干掉了呢？_
+
+如果持有锁的进程意外退出，那么其它进程将无法再获取锁，从而造成死锁，将无法再把`监听socket`加入自己的`epoll fd`。
+
+解决方案就是给锁设置`robust`属性，之后，进程B`trylock`操作返回`EOWNERDEAD`，则说明持有该锁的进程A挂了，然后B可以调用`pthread_mutex_consistent_np`进行清理后，再释放锁。下一次B就可以正常获取锁了。
+
+{% highlight c %}
+pthread_mutexattr_setrobust_np(&attr,PTHREAD_MUTEX_ROBUST_NP);
+
+A lock
+A die
+
+...
+
+B
+
+if (pthread_mutex_trylock(plock) == EOWNERDEAD) { // found A dead
+    pthread_mutex_consistent_np(plock); // consist
+    pthread_mutex_unlock(plock); // unlock
+}
+
+pthread_mutex_lock(plock); // lock sussessful~
+{% endhighlight %}
+
+----
+
+下面是解决惊群的完整代码：
+
+{% highlight c %}
+#include <iostream>
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <pthread.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+
+using namespace std;
+
+int set_nonblock(int sfd) {
+    int flags, s;
+    flags = fcntl (sfd, F_GETFL, 0);
+    if (flags == -1) {
+        perror ("fcntl");
+        return -1;
+
+    }
+    flags |= O_NONBLOCK;
+    s = fcntl (sfd, F_SETFL, flags);
+    if (s == -1) {
+        perror ("fcntl");
+        return -1;
+
+    }
+    return 0;
+}
+
+void master(int listen_fd, pthread_mutex_t * g_pmtx) {
+    int epfd = epoll_create(1);
+    struct epoll_event listen_ev, evs[10];
+    listen_ev.events = EPOLLIN;
+    listen_ev.data.fd = listen_fd;
+    bool bHasLock = false;
+    while (1) {
+        if (!bHasLock) {
+            int ret = 0;
+            if ((ret=pthread_mutex_trylock(g_pmtx)) == 0) {
+                epoll_ctl(epfd, EPOLL_CTL_ADD, listen_fd, &listen_ev);
+                bHasLock = true;
+                printf("pid[%d] get lock succ.\n", getpid());
+            } else {
+                if (ret == EOWNERDEAD) {
+                    printf("pid[%d] try consist dead lock. ret[%d]\n", getpid(),
+                            pthread_mutex_consistent_np(g_pmtx));
+                    pthread_mutex_unlock(g_pmtx);
+                } else {
+                    bHasLock = false;
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, listen_fd, NULL);
+                    printf("pid[%d] get lock fail.\n", getpid());
+                }
+            }
+        }
+
+        int ret=epoll_wait(epfd, evs, 10, 1000);
+        if (ret < 0) {
+            _exit(EXIT_FAILURE);
+        } else if (ret == 0) {
+            printf("pid[%d] timeout...\n", 
+                    getpid());
+            continue;
+        }
+        for (int i=0; i<ret; ++i) {
+            if (evs[i].data.fd == listen_fd && 
+                    evs[i].events&EPOLLIN) {
+                struct sockaddr_in cliaddr;
+                bzero(&cliaddr, sizeof(cliaddr));
+                socklen_t clilen = sizeof(cliaddr);
+                int clifd = accept(listen_fd, (struct sockaddr *)&cliaddr, &clilen);
+                printf("pid[%d] clifd[%d]\n", 
+                        getpid(), clifd);
+                close(clifd);
+                printf("pid[%d] unlock.\n", getpid());
+                bHasLock = false;
+                pthread_mutex_unlock(g_pmtx);
+                sleep(1);
+            } else {
+                // pass
+            }
+        }
+    }
+}
+
+int main() {
+
+    int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int reuse = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse));
+    set_nonblock(listen_fd);
+
+    struct sockaddr_in svraddr;
+    bzero(&svraddr, sizeof(svraddr)); 
+    svraddr.sin_family = AF_INET;
+    svraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    svraddr.sin_port = htons(8090);
+
+    bind(listen_fd, (struct sockaddr *)&svraddr, sizeof(svraddr));
+    listen(listen_fd, 100);
+
+    // lock
+    pthread_mutex_t * mtx = NULL;
+    mtx = (pthread_mutex_t*)mmap(NULL, sizeof(pthread_mutex_t), PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANON, -1, 0);
+    // should deal with MAP_FAILED here, in fact
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    //pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT); 
+    pthread_mutexattr_setrobust_np(&attr,PTHREAD_MUTEX_ROBUST_NP); 
+    pthread_mutex_init(mtx, &attr);
+    pthread_mutexattr_destroy(&attr);
+
+    for (int i=0; i<4; ++i) {
+        int ret = fork();
+        if (ret == -1) {
+            --i;
+        } else if (ret == 0) {
+            master(listen_fd, mtx); 
+        } else {
+            // pass
+        }
+    }
+
+    char c = cin.get();
+
+    return 0;
+}
+{% endhighlight %}
+
+----
+
+> 1. [pthread互斥信号量使用总结](http://www.linuxidc.com/Linux/2012-09/70705.htm)
+> 2. [posix多线程有感–线程高级编程（互斥量属性）](http://code2.riaos.com/?p=5052810)
+> 3. [解决进程间共享内存，由于某个进程异常退出导致死锁问题](http://www.searchtb.com/2013/07/%E8%A7%A3%E5%86%B3%E8%BF%9B%E7%A8%8B%E9%97%B4%E5%85%B1%E4%BA%AB%E5%86%85%E5%AD%98%EF%BC%8C%E7%94%B1%E4%BA%8E%E6%9F%90%E4%B8%AA%E8%BF%9B%E7%A8%8B%E5%BC%82%E5%B8%B8%E9%80%80%E5%87%BA%E5%AF%BC%E8%87%B4.html)
+

@@ -1,0 +1,76 @@
+---
+layout: post
+title:  "IPC -- fifo 命名管道"
+date:   2015-09-20 20:24:19 +0800
+categories: 编程
+---
+
+demo:
+
+{% highlight c %}
+#include <iostream>
+#include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <unistd.h>
+#include <wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+using namespace std;
+
+#define FIFO_PATH "./fifo.hayespan"
+
+int main() {
+    umask(0);
+    if(mkfifo(FIFO_PATH, S_IRUSR|S_IWUSR) < 0) {
+        cerr << "create fifo fail." << endl;
+        exit(-1);
+    }
+    pid_t pid = -1;
+    if ((pid=fork()) < 0) {
+        cerr << "fork fail." << endl;
+        exit(-1);
+    } else if (pid == 0) {
+        FILE * pFifo = fopen(FIFO_PATH, "r");
+        if (pFifo == NULL) {
+            cerr << "open fifo fail." << endl;
+            _exit(-1);
+        }
+        int iFd = fileno(pFifo);
+        // fcntl(iFd , F_SETFD, O_NONBLOCK);
+        char buf[100];
+        while (read(iFd, buf, 1) > 0) {
+            write(STDOUT_FILENO, buf, 1);
+        }
+        cout << endl;
+        fclose(pFifo);
+        printf("subprocess[%d] _exit.\n", getpid());
+        _exit(0);
+    }
+    int iFd = open(FIFO_PATH, O_WRONLY); 
+    if (iFd < 0) {
+        cerr << "main process open fifo fail." << endl;
+        exit(-1);
+    }
+    cout << "main process begin writing..." << endl;
+    const char * psz = "hello world!";
+    write(iFd, psz, strlen(psz));
+    close(iFd);
+    waitpid(pid, NULL, 0);
+    unlink(FIFO_PATH);
+    cout << "main process exit." << endl;
+    exit(0);
+}
+{% endhighlight %}
+
+output:
+
+```
+panhzh3@hayespan:cpp/ipc $ ./a.out 
+main process begin writing...
+hello world!
+subprocess[15976] _exit.
+main process exit.
+```
+

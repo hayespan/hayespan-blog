@@ -1,0 +1,114 @@
+---
+layout: post
+title:  "静态链接库与动态链接库"
+date:   2015-04-13 20:24:19 +0800
+categories: 编程
+---
+
+今天看了CSAPP（Computer Science: A Programmer's Prospective）的链接章节，对链接器终于有所了解，以前只知道直接一句`gcc/g++`包办 __预处理、编译、汇编、链接__ 过程，简单方便，对链接过程事实上做了什么，仅仅是大概猜测而已。
+
+做点笔记，关于静态链接与动态链接，备忘。
+
+### 静态链接库
+----
+静态链接库的目的是把函数功能分别编译成独立的目标模块（可链接对象，`*.o`），然后打包成`*.a`，方便使用并节省空间时间。因为如果把所有函数都编译成一个`.o`，实现一旦修改，则需要重新编译，分离编译成大量的`.o`文件可以节省时间。同时，如果全部都在一个`.o`中，那么会导致多余的拷贝（因为只用到少数函数）。
+
+例子：
+
+1.编写`f`，`g`两个函数，头文件与实现如下：
+
+{% highlight c %}
+/* f.h */
+#ifdef F_H
+#deine F_H
+void f();
+#enif
+
+/* f.c */
+#inlude <stdio.h>
+void f() {
+   printf("f\n");
+}
+
+/* g.h */
+#ifdef G_H
+#deine G_H
+void g();
+#enif
+
+/* g.c */
+#inlude <stdio.h>
+void g() {
+   printf("g\n");
+}
+{% endhighlight %}
+
+2.分别编译成`.o`
+
+`gcc -c f.c g.c`得到`f.o`, `g.o`
+
+3.打包成`.a`
+
+`ar rcs hayespan.a f.o g.o`得到`hayespan.a`
+
+4.编写`main`函数
+
+{% highlight c %}
+/* main.c */
+#include <stdio.h>
+#include "f.h" // 此处包含头文件，但是经过测试不包含其实也没报错，但还是得包含
+#include "g.h"
+
+int main(int argc, const char *argv[])
+{
+    f();
+    g();
+    return 0;
+}
+{% endhighlight %}
+
+5.链接生成目标文件（可执行文件`a.out`）
+
+`gcc -static main.o ./hayespan.a`
+
+（注意:引用库是有顺序的，如果`libx.a`引用`liby.a`中的定义，则`libx.a`必须在`liby.a`之前，如果有循环引用，则可以出现重复，如：`gcc -static main.o ./libx.a ./liby.a ./libx.a`）
+
+6.运行`./a.out`得到
+
+{% highlight c %}
+/* ouput */
+f
+g
+{% endhighlight %}
+
+### 动态链接库
+----
+静态链接库仍然存在浪费空间的问题，因为所有可执行文件都将包含`.o`中的代码。动态链接共享库可以在运行时动态加载，而每个文件系统仅仅只存在一份共享库代码与数据。
+
+例子：
+
+1. 同样是之前的`f.c`，`g.c`文件
+
+   使用`gcc -shared -fPIC -o hayespan.so f.c g.c`
+
+   编译生成动态共享库`hayespan.so`
+
+2. 同样是`main.c`
+
+   使用`gcc -o b.out main.o ./hayespan.so`
+
+   编译生成`sa.out`
+
+3. `ll` 一下，可以发现文件小了许多
+
+   ```
+   -rwxrwxr-x 1 panhzh3 panhzh3 751732  4月 13 16:38 a.out*
+   -rwxrwxr-x 1 panhzh3 panhzh3   7320  4月 13 16:49 b.out*
+   ```
+
+----
+
+> 1. [Static, Shared Dynamic and Loadable Linux Libraries](http://www.yolinux.com/TUTORIALS/LibraryArchives-StaticAndDynamic.html)
+> 2. [Better understanding Linux secondary dependencies solving with examples](http://www.kaizou.org/2015/01/linux-libraries/)
+> 3. [g++参数介绍](http://www.cnblogs.com/lidan/archive/2011/05/25/2239517.html)
+

@@ -1,0 +1,181 @@
+---
+layout: post
+title:  "c++的四种类型转换"
+date:   2015-04-09 20:24:19 +0800
+categories: 编程
+---
+
+大一时学`c++`还算认真，但因为没有拿来做项目，所以对`c++`仍然只知皮毛，只记得曾经老师在课上讲过:
+
+> `(type)x`是`c`风格的转换，同学们要少用，既然学了`c++`，那就用`static_cast`。
+
+哦，然后后来还是没怎么用，因为觉得`(type)x`打起来比较方便……（这个理由真的有点暴力）
+于是，对`c++`中的这几种类型转换一直没去仔细了解，今天突发奇想翻了下《More effective c++》，其中也提到要多使用`c++`风格的类型转换，在此做个笔记，备忘～
+
+----
+
+书中关于`c++`四种类型转换的描述如下：
+
+1. __static_cast__ 
+在功能上基本上与C风格的类型转换一样强大，含义也一样。它也有功能上的限制。例如，你不能用`static_cast`像用C风格的类型转换一样把`struct`转换成`int`类型或者把`double`类型转换成指针类型，另外，`static_cast`不能从表达式中去除`const`属性，因为另一个新的类型转换操作符`const_cast`有这样的功能。
+
+2. __const_cast__ 
+用于类型转换掉表达式的`const`或`volatileness`属性。通过使用`const_cast`，你向人们和编译器强调你通过类型转换想做的只是改变一些东西的`constness`或者 `volatileness`属性。这个含义被编译器所约束。如果你试图使用`const_cast`来完成修改`constness` 或者`volatileness`属性之外的事情，你的类型转换将被拒绝。
+
+3. __dynamic_cast__ 
+它被用于安全地沿着类的继承关系向下进行类型转换。这就是说，你能用`dynamic_cast`把指向基类的指针或引用转换成指向其派生类或其兄弟类的指针或引用，而且你能知道转换是否成功。失败的转换将返回空指针（当对指针进行类型转换时）或者抛出异常（当对引用进行类型转换时）。
+
+4. __reinterpret_cast__
+使用这个操作符的类型转换，其的转换结果几乎都是执行期定义（implementation-defined）。因此，使用`reinterpret_casts`的代码很难移植。`reinterpret_casts`的最普通的用途就是在函数指针类型之间进行转换。
+
+----
+以下是对 cplusplus.com 中的[Type conversions](http://www.cplusplus.com/doc/tutorial/typecasting/)一文的翻译与补充的个人理解。
+
+### 1. static_cast
+> ...你不能用`static_cast`像用C风格的类型转换一样把`struct`转换成`int`类型或者把`double`类型转换成指针类型...
+
+_疑问_：`c`风格中的`(type)x`可以把`struct`强制转为`int`么？以前从没这么做过，ok，来试一下～
+
+`c`风格转换结构体到普通类型：
+
+{% highlight c++ %}
+#include <stdio.h>
+
+typedef struct {
+    int x;
+    double y;
+} S;
+
+int main(int argc, const char *argv[])
+{
+    S a = {1, 2.0};
+
+    printf("%d\n", (int)a); 
+    // gcc4.8.1报错：aggregate value used where an integer was expected
+    // clang3.3报错：operand of type 'S' where arithmetic or pointer type is required
+    // 看来，直接把结构体转为普通类型是不行的，估计书中的表述是针对老版本的编译器吧
+    // 所以，只能通过指针的形式来转换了，如下
+    printf("%d\n", *(int*)&a);  // 取a的地址，解释为int指针，再解引用即可
+    return 0;
+}
+{% endhighlight %}
+
+`static_cast`可以转换指针与类，不单可以做向上转型（把子类指针转为基类指针，安全），也可以做向下转型（把基类指针转为子类指针，可能不安全）。注意，`static_cast`不会进行动态安全检查，因此，需要用户自行保证转换是安全的。`dynamic_cast`则会进行动态安全检查。
+
+{% highlight c++ %}
+class Base {};
+class Derived: public Base {};
+Base * a = new Base;
+Derived * b = static_cast<Derived*>(a);
+{% endhighlight %}
+
+这样写是可以的，尽管指针`b`事实上指向的是不完整的对象（`Base`对象），所以如果在运行时，企图用该指针访问修改子类成员，则可能会因为修改后续数据而导致运行时错误。举个例子：
+
+{% highlight c++ %}
+class A { int x; };
+class B: public A { int y; };
+A a;
+a.x = 1;
+int y = 1; // y位于a的后边，4字节，初始化为1
+cout << &y << endl; // 输出地址：0xbf9a5f7c
+cout << &((static_cast<B*>(&a))->y) << endl; // 输出地址：0xbf9a5f7c，相同！
+(*static_cast<B*>(&a)).y = 2; // 转换成B指针并修改B的数据成员y
+cout << y << endl; // 变为2
+{% endhighlight %}
+
+因此，`static_cast`在使用时，需要程序员自身保证安全。
+
+`static_cast`可以做默认隐式转换（不限于指针转换），同样也可以做相反的转换。
+它可以：
+
++ 把`void *`转为任意指针类型，可以保证转换后的地址值与原值相同；
++ 转换整型、浮点型和枚举类型为枚举类型；
++ 显式调用单一参数的构造函数或者转换操作符；
++ 转化成右值引用；
++ 把枚举类型的值转换成整型或浮点型；
++ 转换任意类型为`void`；
+
+----
+
+### 2. const_cast
+
+{% highlight c++ %}
+void f(int & x) {
+    x = 2; // 修改值
+}
+
+const int x = 1;
+f(const_cast<int&>(x)); // 如果不进行去const转换，则无法匹配函数
+cout << x << endl; // 结果是？
+{% endhighlight %}
+
+注意，虽然上述代码可运行，但实际上 __修改去掉const的常量值的行为是未定义的__ ，即`x = 2`事实上能否修改原本为`const`的值，是不确定的。
+
+----
+
+### 3. dynamic_cast
+
+`dynamic_cast`只能用于指针和引用（与类绑定或者`void*`）。它的目的是保证转换后的指针指向完整的对象。（区别于`static_cast`）
+
+如果是做向上转换，自然是完整的，因为子类必然包含基类的所有成员，所以接受基类指针参数的函数，必然可以接受子类指针。
+
+如果是做向下转换多态类（拥有虚函数的类）的指针和引用，则要求当且仅当基类指针所指向的对象是一个有效完整的目标对象（子类对象）。如果基类指针指向的是基类对象，又企图将其转换为子类指针，也就是不安全状态，则会返回`null`指针。显然，`dynamic_cast`在`static_cast`上的基础上多了安全检查。
+举个例子：
+
+{% highlight c++ %}
+// dynamic_cast
+#include <iostream>
+#include <exception>
+using namespace std;
+
+class Base { virtual void dummy() {} };
+class Derived: public Base { int a; };
+
+int main () {
+    try {
+        Base * pba = new Derived;
+        Base * pbb = new Base;
+        Derived * pd;
+
+        pd = dynamic_cast<Derived*>(pba);
+        if (pd==0) cout << "Null pointer on first type-cast.\n";
+
+        pd = dynamic_cast<Derived*>(pbb);
+        if (pd==0) cout << "Null pointer on second type-cast.\n";
+
+    } catch (exception& e) {cout << "Exception: " << e.what();}
+    // ouput: 
+    // Null pointer on second type-cast.
+    // pbb 转换失败
+    return 0;
+}
+{% endhighlight %}
+
+[兼容性]：`dynamic_cast`需要RTTI（Run-Time Type Information）来追踪动态类型。一些编译器可能默认关闭这个选项，所以应该开启以支持动态类型检查。
+
+上面的代码中，针对指针转换失败，会抛出异常。如果是针对引用，则会抛出`bad_cast`异常。
+
+----
+
+### 4. reinterpret_cast
+
+`reinterpret_cast`可以转换任意指针类型，即使指针类型不相关。底层操作只是直接的二进制值拷贝，因此所有指针类型的转换都是允许的，不会检查指针指向的对象类型，也不会检查指针自身的类型。
+
+`reinterpret_cast`可以实现整型与指针间互转，只保证如果把指针的值转换到一个更大的整型时，能正确地将整型数转换回指针。
+
+`reinterpret_cast`所做的转换是低层次的，使用它的代码一般是系统相关的，不可移植。举个例子：
+
+{% highlight c++ %}
+class A { /* ... */ };
+class B { /* ... */ };
+A * a = new A;
+B * b = reinterpret_cast<B*>(a);
+{% endhighlight %}
+
+以上代码可以编译通过，尽管没什么意义。因为`b`指向了完全不相关的`a`类型对象，因此对`b`进行操作将是不安全的。
+
+----
+
+> 1. [Type conversions](http://www.cplusplus.com/doc/tutorial/typecasting/)
+> 2. [more efficient c++](http://book.douban.com/subject/1457891/)
+
