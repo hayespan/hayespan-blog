@@ -24,4 +24,4 @@ duoshuo_enable: true
 duoshuo_username: "hayespangithubio"
 
 # highlighter
-highlighter: "pygments"
+highlighter: "rouge"

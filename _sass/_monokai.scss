@@ -1,6 +1,7 @@
 .highlight pre, .highlight code {
     background-color: #272822;
     color: #f8f8f2;
+    border: 0;
 }
 
 .highlight {
@@ -8,7 +9,7 @@
     @extend %vertical-rhythm;
 
     .highlighter-rouge & {
-      background: #eef;
+      background: #272822;
     }
 }
 
